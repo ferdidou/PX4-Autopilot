@@ -143,7 +143,7 @@ public:
 	 *
 	 * @return Control vector
 	 */
-	matrix::Vector<float, NUM_AXES> getAllocatedControl() const
+	virtual matrix::Vector<float, NUM_AXES> getAllocatedControl() const
 	{ return (_effectiveness * (_actuator_sp - _actuator_trim)).emult(_control_allocation_scale); }
 
 	/**
@@ -194,6 +194,13 @@ public:
 
 	void setSlewRateLimit(const ActuatorVector &slew_rate_limit)
 	{ _actuator_slew_rate_limit = slew_rate_limit; }
+
+	/**
+	 * Set the measured loop time, used by dynamic (integrating) allocation methods.
+	 *
+	 * @param dt Time since the previous allocation cycle [s]
+	 */
+	void setDt(float dt) { _dt = dt; }
 
 	/**
 	 * Apply slew rate to current actuator setpoint
@@ -247,6 +254,12 @@ public:
 
 	void setNormalizeRPY(bool normalize_rpy) { _normalize_rpy = normalize_rpy; }
 
+	/**
+	 * @return true for the dynamic differential (jerk-level) allocator. Used to
+	 * safely identify the concrete type without RTTI before pushing geometry.
+	 */
+	virtual bool isDifferential() const { return false; }
+
 protected:
 	friend class ControlAllocator; // for _actuator_sp
 
@@ -261,6 +274,7 @@ protected:
 	matrix::Vector<float, NUM_AXES> _control_sp;   		///< Control setpoint
 	matrix::Vector<float, NUM_AXES> _control_trim; 		///< Control at trim actuator values
 	int _num_actuators{0};
+	float _dt{0.f};						///< measured loop time [s], for dynamic allocation methods
 	bool _normalize_rpy{false};				///< if true, normalize roll, pitch and yaw columns
 	bool _had_actuator_failure{false};
 };

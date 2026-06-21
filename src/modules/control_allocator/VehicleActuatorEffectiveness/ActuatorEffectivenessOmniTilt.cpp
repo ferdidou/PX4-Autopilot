@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2021 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2024 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,71 +31,33 @@
  *
  ****************************************************************************/
 
-#pragma once
+#include "ActuatorEffectivenessOmniTilt.hpp"
 
-#include "control_allocation/actuator_effectiveness/ActuatorEffectiveness.hpp"
-#include "ActuatorEffectivenessRotors.hpp"
+using namespace matrix;
 
-#include <px4_platform_common/module_params.h>
-
-class ActuatorEffectivenessTilts : public ModuleParams, public ActuatorEffectiveness
+ActuatorEffectivenessOmniTilt::ActuatorEffectivenessOmniTilt(ModuleParams *parent)
+	: ModuleParams(parent),
+	  _rotors(this, ActuatorEffectivenessRotors::AxisConfiguration::FixedUpwards, true),
+	  _tilts(this)
 {
-public:
+}
 
-	static constexpr int MAX_COUNT = 6;
+bool
+ActuatorEffectivenessOmniTilt::getEffectivenessMatrix(Configuration &configuration,
+		EffectivenessUpdateReason external_update)
+{
+	if (external_update == EffectivenessUpdateReason::NO_EXTERNAL_UPDATE) {
+		return false;
+	}
 
-	enum class Control : int32_t {
-		// This matches with the parameter
-		None = 0,
-		Yaw = 1,
-		Pitch = 2,
-		YawAndPitch = 3,
-	};
-	enum class TiltDirection : int32_t {
-		// This matches with the parameter
-		TowardsFront = 0,
-		TowardsRight = 90,
-	};
+	// Rotors (motors) then tilts (servos), single matrix. The tilts provide yaw,
+	// so yaw-by-differential-thrust is disabled when they do.
+	_rotors.enableYawByDifferentialThrust(!_tilts.hasYawControl());
+	const bool rotors_added_successfully = _rotors.addActuators(configuration);
 
-	struct Params {
-		Control control;
-		float min_angle;
-		float max_angle;
-		TiltDirection tilt_direction;
-	};
+	_first_tilt_idx = configuration.num_actuators_matrix[0];
+	_tilts.updateTorqueSign(_rotors.geometry());
+	const bool tilts_added_successfully = _tilts.addActuators(configuration);
 
-	ActuatorEffectivenessTilts(ModuleParams *parent);
-	virtual ~ActuatorEffectivenessTilts() = default;
-
-	bool addActuators(Configuration &configuration);
-
-	const char *name() const override { return "Tilts"; }
-
-	int count() const { return _count; }
-
-	const Params &config(int idx) const { return _params[idx]; }
-
-	void updateTorqueSign(const ActuatorEffectivenessRotors::Geometry &geometry, bool disable_pitch = false);
-
-	bool hasYawControl() const;
-
-	float getYawTorqueOfTilt(int tilt_index) const { return _torque[tilt_index](2); }
-
-private:
-	void updateParams() override;
-
-	struct ParamHandles {
-		param_t control;
-		param_t min_angle;
-		param_t max_angle;
-		param_t tilt_direction;
-	};
-
-	ParamHandles _param_handles[MAX_COUNT];
-	param_t _count_handle;
-
-	Params _params[MAX_COUNT] {};
-	int _count{0};
-
-	matrix::Vector3f _torque[MAX_COUNT] {};
-};
+	return rotors_added_successfully && tilts_added_successfully;
+}

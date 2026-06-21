@@ -1,0 +1,137 @@
+#!/bin/sh
+#
+# @name Hexa Tilting Omnidirectional (differential allocation)
+#
+# @type Hexarotor x
+# @class Copter
+#
+# @output MAIN1 motor 1
+# @output MAIN2 motor 2
+# @output MAIN3 motor 3
+# @output MAIN4 motor 4
+# @output MAIN5 motor 5
+# @output MAIN6 motor 6
+# @output MAIN7 tilt servo 1
+# @output MAIN8 tilt servo 2
+# @output MAIN9 tilt servo 3
+# @output MAIN10 tilt servo 4
+# @output MAIN11 tilt servo 5
+# @output MAIN12 tilt servo 6
+#
+# @maintainer
+#
+# Six-arm omnidirectional multirotor (one rotor + one tilt servo per arm), flown
+# with the dynamic differential (jerk-level) allocation (CA_AIRFRAME=16,
+# CA_METHOD=3). Geometry matches the Gazebo-classic model "hexa_tilting".
+#
+
+. ${R}etc/init.d/rc.mc_defaults
+
+param set-default MAV_TYPE 13
+
+# Hover throttle (quadratic motor: hover ~ sqrt(weight/max_thrust)). TWR ~2.7.
+param set-default MPC_THR_HOVER 0.61
+
+# Slow auto-land: gentle touchdown so the land detector triggers reliably on this
+# heavier airframe.
+param set-default MPC_LAND_SPEED 0.3
+
+# Omnidirectional tilt airframe with dynamic differential allocation
+param set-default CA_AIRFRAME 16
+param set-default CA_METHOD 3
+param set-default CA_ADA_KJ 150
+
+# Yaw is produced through the tilt servos (lower bandwidth than rotor-drag yaw), so the
+# default rate gains over-drive the loop. Reduced gain and integrator for stability.
+param set-default MC_YAWRATE_P 0.10
+param set-default MC_YAWRATE_I 0.05
+
+# Omnidirectional flight uses large/inverted attitudes by design; disable the attitude
+# failure lockdown (default 60 deg roll/pitch).
+param set-default FD_FAIL_R 0
+param set-default FD_FAIL_P 0
+
+param set-default CA_ROTOR_COUNT 6
+param set-default CA_SV_TL_COUNT 6
+
+# Rotor positions in PX4 FRD (X-forward, Y-right). These mirror the model's
+# Gazebo-FLU link poses (Y sign flipped). Each rotor has its own tilt servo.
+# KM>0 = CCW, KM<0 = CW (alternating around the ring).
+param set-default CA_ROTOR0_PX 0.00
+param set-default CA_ROTOR0_PY 0.35
+param set-default CA_ROTOR0_KM -0.09
+param set-default CA_ROTOR0_TILT 1
+
+param set-default CA_ROTOR1_PX 0.00
+param set-default CA_ROTOR1_PY -0.35
+param set-default CA_ROTOR1_KM 0.09
+param set-default CA_ROTOR1_TILT 2
+
+param set-default CA_ROTOR2_PX 0.303
+param set-default CA_ROTOR2_PY -0.175
+param set-default CA_ROTOR2_KM -0.09
+param set-default CA_ROTOR2_TILT 3
+
+param set-default CA_ROTOR3_PX -0.303
+param set-default CA_ROTOR3_PY 0.175
+param set-default CA_ROTOR3_KM 0.09
+param set-default CA_ROTOR3_TILT 4
+
+param set-default CA_ROTOR4_PX 0.303
+param set-default CA_ROTOR4_PY 0.175
+param set-default CA_ROTOR4_KM 0.09
+param set-default CA_ROTOR4_TILT 5
+
+param set-default CA_ROTOR5_PX -0.303
+param set-default CA_ROTOR5_PY -0.175
+param set-default CA_ROTOR5_KM -0.09
+param set-default CA_ROTOR5_TILT 6
+
+# Tilt servos: one per arm, 360-deg (continuous) -> range +-180 deg to match the
+# model's servo channel input_scaling of pi (3.14159) rad. Removing the +-90 deg
+# wall moves the max-attitude limit from the tilt range to the thrust margin (TWR).
+# Tilt direction TD (FRD) derived from the model's tilt-joint axes (FLU) converted
+# to FRD: TD = atan2(axis_x, axis_y_FLU).
+param set-default CA_SV_TL0_MINA -180
+param set-default CA_SV_TL0_MAXA 180
+param set-default CA_SV_TL0_TD 180
+param set-default CA_SV_TL0_CT 3
+
+param set-default CA_SV_TL1_MINA -180
+param set-default CA_SV_TL1_MAXA 180
+param set-default CA_SV_TL1_TD 0
+param set-default CA_SV_TL1_CT 3
+
+param set-default CA_SV_TL2_MINA -180
+param set-default CA_SV_TL2_MAXA 180
+param set-default CA_SV_TL2_TD 60
+param set-default CA_SV_TL2_CT 3
+
+param set-default CA_SV_TL3_MINA -180
+param set-default CA_SV_TL3_MAXA 180
+param set-default CA_SV_TL3_TD 240
+param set-default CA_SV_TL3_CT 3
+
+param set-default CA_SV_TL4_MINA -180
+param set-default CA_SV_TL4_MAXA 180
+param set-default CA_SV_TL4_TD 120
+param set-default CA_SV_TL4_CT 3
+
+param set-default CA_SV_TL5_MINA -180
+param set-default CA_SV_TL5_MAXA 180
+param set-default CA_SV_TL5_TD 300
+param set-default CA_SV_TL5_CT 3
+
+# Output mapping: motors -> Motor1..6 (101..106), tilt servos -> Servo1..6 (201..206)
+param set-default PWM_MAIN_FUNC1 101
+param set-default PWM_MAIN_FUNC2 102
+param set-default PWM_MAIN_FUNC3 103
+param set-default PWM_MAIN_FUNC4 104
+param set-default PWM_MAIN_FUNC5 105
+param set-default PWM_MAIN_FUNC6 106
+param set-default PWM_MAIN_FUNC7 201
+param set-default PWM_MAIN_FUNC8 202
+param set-default PWM_MAIN_FUNC9 203
+param set-default PWM_MAIN_FUNC10 204
+param set-default PWM_MAIN_FUNC11 205
+param set-default PWM_MAIN_FUNC12 206

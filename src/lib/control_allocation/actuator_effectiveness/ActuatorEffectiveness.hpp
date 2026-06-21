@@ -51,6 +51,7 @@ enum class AllocationMethod {
 	PSEUDO_INVERSE = 0,
 	SEQUENTIAL_DESATURATION = 1,
 	AUTO = 2,
+	DIFFERENTIAL = 3, ///< dynamic jerk-level allocation (ADA), see ControlAllocationDifferential
 };
 
 enum class ActuatorType {

@@ -184,6 +184,10 @@ ControlAllocator::update_allocation_method(bool force)
 				_control_allocation[i] = new ControlAllocationSequentialDesaturation();
 				break;
 
+			case AllocationMethod::DIFFERENTIAL:
+				_control_allocation[i] = new ControlAllocationDifferential();
+				break;
+
 			default:
 				PX4_ERR("Unknown allocation method");
 				break;
@@ -241,6 +245,10 @@ ControlAllocator::update_effectiveness_source()
 
 		case EffectivenessSource::MULTIROTOR_WITH_TILT:
 			tmp = new ActuatorEffectivenessMCTilt(this);
+			break;
+
+		case EffectivenessSource::OMNI_TILT:
+			tmp = new ActuatorEffectivenessOmniTilt(this);
 			break;
 
 		case EffectivenessSource::CUSTOM:
@@ -427,6 +435,9 @@ ControlAllocator::Run()
 
 			_control_allocation[i]->setControlSetpoint(c[i]);
 
+			// Provide the measured loop time for dynamic (integrating) allocation methods
+			_control_allocation[i]->setDt(dt);
+
 			// Do allocation
 			_control_allocation[i]->allocate();
 			_actuator_effectiveness->allocateAuxilaryControls(dt, i, _control_allocation[i]->_actuator_sp); //flaps and spoilers
@@ -590,6 +601,51 @@ ControlAllocator::update_effectiveness_matrix_if_needed(EffectivenessUpdateReaso
 			int total_num_actuators = config.num_actuators_matrix[i];
 			_control_allocation[i]->setEffectivenessMatrix(config.effectiveness_matrices[i], config.trim[i],
 					config.linearization_point[i], total_num_actuators, reason == EffectivenessUpdateReason::CONFIGURATION_UPDATE);
+		}
+
+		// Push the lifted tiltrotor geometry to the dynamic differential allocator (if active).
+		// Each rotor with a dedicated tilt servo becomes one "arm" of the NDA model.
+		if (_effectiveness_source_id == EffectivenessSource::OMNI_TILT
+		    && _control_allocation[0] != nullptr && _control_allocation[0]->isDifferential()) {
+
+			auto *omni = static_cast<ActuatorEffectivenessOmniTilt *>(_actuator_effectiveness);
+			auto *diff = static_cast<ControlAllocationDifferential *>(_control_allocation[0]);
+
+			const ActuatorEffectivenessRotors::Geometry &geo = omni->rotorGeometry();
+			const int num_motors = geo.num_rotors;
+
+			ControlAllocationDifferential::ArmGeometry arms[ControlAllocationDifferential::MAX_ARMS];
+			int num_arms = 0;
+
+			for (int i = 0; i < geo.num_rotors && num_arms < ControlAllocationDifferential::MAX_ARMS; ++i) {
+				const int tilt_idx = geo.rotors[i].tilt_index;
+
+				if (tilt_idx < 0 || tilt_idx >= omni->tilts().count()) {
+					continue; // only rotors with a dedicated tilt servo are modelled
+				}
+
+				const ActuatorEffectivenessTilts::Params &tc = omni->tilts().config(tilt_idx);
+				const float td = math::radians((float)static_cast<int32_t>(tc.tilt_direction));
+
+				arms[num_arms].position = geo.rotors[i].position;
+				arms[num_arms].b_hat = geo.rotors[i].axis;
+				arms[num_arms].h_hat = matrix::Vector3f(cosf(td), sinf(td), 0.f);
+				arms[num_arms].thrust_max = geo.rotors[i].thrust_coef;
+				arms[num_arms].kappa = geo.rotors[i].moment_ratio;
+				arms[num_arms].alpha_min = tc.min_angle;
+				arms[num_arms].alpha_max = tc.max_angle;
+				arms[num_arms].thrust_index = i;
+				arms[num_arms].alpha_index = num_motors + tilt_idx;
+				++num_arms;
+			}
+
+			if (num_arms > 0) {
+				// Nullspace rest thrust as a thrust *fraction* (s_thrust). The emitted
+				// motor command is sqrt(s_thrust) (quadratic-motor inversion), so 0.25
+				// keeps the nominal physical command at sqrt(0.25)=0.5 (mid-range),
+				// i.e. the same neutral posture as before the linearization.
+				diff->setOmniGeometry(arms, num_arms, 0.25f);
+			}
 		}
 
 		trims.timestamp = hrt_absolute_time();
@@ -858,6 +914,10 @@ int ControlAllocator::print_status()
 
 	case AllocationMethod::AUTO:
 		PX4_INFO("Method: Auto");
+		break;
+
+	case AllocationMethod::DIFFERENTIAL:
+		PX4_INFO("Method: Differential (jerk-level)");
 		break;
 	}
 

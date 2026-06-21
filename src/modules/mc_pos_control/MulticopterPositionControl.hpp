@@ -61,6 +61,7 @@
 #include <uORB/topics/hover_thrust_estimate.h>
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/trajectory_setpoint.h>
+#include <uORB/topics/vehicle_attitude.h>
 #include <uORB/topics/vehicle_attitude_setpoint.h>
 #include <uORB/topics/vehicle_constraints.h>
 #include <uORB/topics/vehicle_control_mode.h>
@@ -102,6 +103,9 @@ private:
 	uORB::Publication<vehicle_local_position_setpoint_s> _local_pos_sp_pub{ORB_ID(vehicle_local_position_setpoint)};	/**< vehicle local position setpoint publication */
 
 	uORB::SubscriptionCallbackWorkItem _local_pos_sub{this, ORB_ID(vehicle_local_position)};	/**< vehicle local position */
+	uORB::Subscription _vehicle_attitude_sub{ORB_ID(vehicle_attitude)};	/**< actual attitude, for omni thrust rotation */
+	float _omni_roll{0.f};	/**< slewed omni roll command [deg] */
+	float _omni_pitch{0.f};	/**< slewed omni pitch command [deg] */
 
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 
@@ -134,6 +138,10 @@ private:
 	};
 
 	DEFINE_PARAMETERS(
+		// Omnidirectional attitude override (tiltrotor full allocation)
+		(ParamInt<px4::params::MPC_OMNI_EN>)        _param_mpc_omni_en,
+		(ParamFloat<px4::params::MPC_OMNI_R>)       _param_mpc_omni_r,
+		(ParamFloat<px4::params::MPC_OMNI_P>)       _param_mpc_omni_p,
 		// Position Control
 		(ParamFloat<px4::params::MPC_XY_P>)         _param_mpc_xy_p,
 		(ParamFloat<px4::params::MPC_Z_P>)          _param_mpc_z_p,

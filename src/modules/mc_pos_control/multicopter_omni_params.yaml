@@ -1,0 +1,38 @@
+module_name: mc_pos_control
+parameters:
+- group: Multicopter Position Control
+  definitions:
+    MPC_OMNI_EN:
+      description:
+        short: Omnidirectional attitude override (for tiltrotors with full allocation)
+        long: |-
+          When enabled, the position controller commands the attitude independently
+          (MPC_OMNI_R / MPC_OMNI_P) instead of tilting the airframe to produce
+          horizontal force. The full 3D body force is passed to the allocator, which
+          must be able to realize lateral force (e.g. CA_AIRFRAME=16, CA_METHOD=3).
+          For a normal multirotor leave this at 0.
+      type: int32
+      default: 0
+      values:
+        0: Disabled (standard underactuated)
+        1: Enabled (commanded attitude, 3D body force)
+    MPC_OMNI_R:
+      description:
+        short: Commanded roll in omnidirectional mode
+      type: float
+      default: 0.0
+      unit: deg
+      min: -90
+      max: 90
+      decimal: 0
+      increment: 1
+    MPC_OMNI_P:
+      description:
+        short: Commanded pitch in omnidirectional mode
+      type: float
+      default: 0.0
+      unit: deg
+      min: -90
+      max: 90
+      decimal: 0
+      increment: 1

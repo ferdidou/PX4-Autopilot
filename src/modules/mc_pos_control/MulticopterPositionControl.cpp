@@ -611,6 +611,41 @@ void MulticopterPositionControl::Run()
 			// Publish attitude setpoint output
 			vehicle_attitude_setpoint_s attitude_setpoint{};
 			_control.getAttitudeSetpoint(attitude_setpoint);
+
+			// Omnidirectional override (MPC_OMNI_EN): command roll/pitch independently of
+			// the thrust direction and let the allocator realize the lateral force via the
+			// tilt servos. Reset the slew state on the ground (the override only runs while
+			// airborne, otherwise the allocator winds up against a non-flight setpoint).
+			if (_param_mpc_omni_en.get() && _vehicle_land_detected.landed) {
+				_omni_roll = 0.f;
+				_omni_pitch = 0.f;
+			}
+
+			if (_param_mpc_omni_en.get() && !_vehicle_land_detected.landed) {
+				// Slew the commanded angles so a step input does not droop the altitude loop.
+				const float max_step = 30.f * dt; // 30 deg/s
+				_omni_roll  += math::constrain(_param_mpc_omni_r.get() - _omni_roll,  -max_step, max_step);
+				_omni_pitch += math::constrain(_param_mpc_omni_p.get() - _omni_pitch, -max_step, max_step);
+
+				// Override roll/pitch, keep the derived yaw.
+				const matrix::Eulerf euler_derived(matrix::Quatf(attitude_setpoint.q_d));
+				const matrix::Quatf q_cmd(matrix::Eulerf(math::radians(_omni_roll),
+							  math::radians(_omni_pitch),
+							  euler_derived.psi()));
+
+				// Express the world thrust in the ACTUAL body frame: the produced world force
+				// stays equal to f_world regardless of attitude-tracking error, so altitude and
+				// position are held while the attitude controller drives toward q_cmd.
+				vehicle_attitude_s att{};
+				_vehicle_attitude_sub.copy(&att);
+				const matrix::Dcmf R_actual(matrix::Quatf(att.q));
+				const matrix::Vector3f thrust_world(local_pos_sp.thrust);
+				const matrix::Vector3f thrust_body = R_actual.transpose() * thrust_world;
+
+				q_cmd.copyTo(attitude_setpoint.q_d);
+				thrust_body.copyTo(attitude_setpoint.thrust_body);
+			}
+
 			attitude_setpoint.timestamp = hrt_absolute_time();
 			_vehicle_attitude_setpoint_pub.publish(attitude_setpoint);
 
